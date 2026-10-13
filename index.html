@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Automobile Sales Dynamic Pivot Dashboard</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- PapaParse for CSV Parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <!-- SheetJS for Excel Export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen flex flex-col antialiased">
+
+  <!-- Top Navigation Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-md shadow-blue-500/20">
+          <i class="fa-solid fa-chart-pie text-base"></i>
+        </div>
+        <div>
+          <h1 class="text-sm sm:text-base font-bold text-slate-900 leading-tight">Sales Dynamic Pivot Matrix</h1>
+          <p class="text-[11px] text-slate-500">Filtered on <span class="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">Status = "New"</span></p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2.5">
+        <button id="btnExportExcel" class="inline-flex items-center px-3 py-1.5 border border-slate-200 shadow-sm text-xs font-semibold rounded-lg text-slate-700 bg-white hover:bg-slate-50 focus:outline-none transition-all opacity-50 cursor-not-allowed" disabled>
+          <i class="fa-solid fa-file-excel text-emerald-600 mr-1.5 text-xs"></i> Export Excel
+        </button>
+        <button id="btnToggleDataModal" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 shadow-sm shadow-blue-600/30 transition-all">
+          <i class="fa-solid fa-cloud-arrow-up mr-1.5"></i> Import Data
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-3 space-y-2.5">
+
+    <!-- INITIAL EMPTY STATE: Direct Upload & Paste Viewport (No hardcoded data) -->
+    <div id="initialUploadContainer" class="bg-white rounded-2xl border-2 border-dashed border-slate-300 shadow-sm p-6 sm:p-10 text-center max-w-3xl mx-auto my-6 space-y-5">
+      <div class="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto text-2xl shadow-inner border border-blue-100">
+        <i class="fa-solid fa-file-arrow-up"></i>
+      </div>
+      <div>
+        <h2 class="text-lg font-bold text-slate-800">Upload CSV or Paste Sales Data</h2>
+        <p class="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+          Apni exported CSV file yahan drop karein ya data paste karein. Sirf <strong class="text-slate-700">Status = "New"</strong> wale records extract karke auto-reports generate hongi.
+        </p>
+      </div>
+
+      <!-- Drag & Drop Zone -->
+      <div id="mainDropZone" class="border-2 border-dashed border-blue-200 bg-blue-50/40 hover:bg-blue-50 hover:border-blue-500 transition-all rounded-xl p-6 cursor-pointer group">
+        <input type="file" id="mainFileInput" accept=".csv,.txt,.tsv" class="hidden">
+        <i class="fa-solid fa-cloud-arrow-up text-3xl text-blue-500 group-hover:scale-110 transition-transform mb-2"></i>
+        <p class="text-xs font-semibold text-slate-700">Click to Browse or Drag & Drop File</p>
+        <p class="text-[11px] text-slate-400 mt-0.5">Supports CSV, Tab-Delimited TSV, UTF-8 & UTF-16</p>
+        <div id="mainFileNameDisplay" class="text-xs text-emerald-600 font-bold mt-2 hidden"></div>
+      </div>
+
+      <div class="flex items-center my-2">
+        <div class="flex-grow border-t border-slate-200"></div>
+        <span class="flex-shrink mx-3 text-[11px] text-slate-400 font-semibold uppercase">Or Paste Directly</span>
+        <div class="flex-grow border-t border-slate-200"></div>
+      </div>
+
+      <!-- Direct Paste Area -->
+      <div class="text-left space-y-1">
+        <div class="flex items-center justify-between">
+          <label class="text-[11px] font-bold text-slate-600 uppercase">Paste Raw Sales Data (with header)</label>
+          <button id="btnClearMainPaste" class="text-[11px] text-rose-500 hover:underline">Clear</button>
+        </div>
+        <textarea id="mainPasteArea" rows="6" class="w-full text-xs font-mono p-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 custom-scrollbar" placeholder="Model Name&#9;Model Variant&#9;Invoice Date&#9;Requesting Dealer&#9;Status..."></textarea>
+      </div>
+
+      <!-- Action Button -->
+      <div>
+        <button id="btnGenerateFromLanding" class="w-full sm:w-auto px-8 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-600/30 transition-all flex items-center justify-center mx-auto space-x-2">
+          <i class="fa-solid fa-chart-simple"></i>
+          <span>Generate Pivot Reports</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- MAIN DASHBOARD CONTENT (Hidden until user loads data) -->
+    <div id="dashboardContainer" class="hidden space-y-2.5">
+
+      <!-- Compact Top Bar: Integrated Micro-KPIs + Search & Toggles -->
+      <div class="bg-white px-3.5 py-2 rounded-lg border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-2.5 text-xs">
+        <!-- Micro-KPI stats -->
+        <div class="flex items-center gap-4 text-xs divide-x divide-slate-200">
+          <div class="flex items-center space-x-1.5">
+            <span class="text-slate-400 text-[11px] font-medium uppercase">New Records:</span>
+            <span id="kpiTotalInvoices" class="font-bold text-slate-900 text-sm">0</span>
+          </div>
+          <div class="flex items-center space-x-1.5 pl-4">
+            <span class="text-slate-400 text-[11px] font-medium uppercase">Dealers:</span>
+            <span id="kpiTotalDealers" class="font-bold text-blue-600 text-sm">0</span>
+          </div>
+          <div class="flex items-center space-x-1.5 pl-4">
+            <span class="text-slate-400 text-[11px] font-medium uppercase">Models:</span>
+            <span id="kpiTotalModels" class="font-bold text-indigo-600 text-sm">0</span>
+          </div>
+          <div class="flex items-center space-x-1.5 pl-4 hidden sm:flex">
+            <span class="text-slate-400 text-[11px] font-medium uppercase">Dates:</span>
+            <span id="kpiTotalDates" class="font-bold text-emerald-600 text-sm">0</span>
+          </div>
+        </div>
+
+        <!-- Search & Control Buttons -->
+        <div class="flex items-center space-x-2 ml-auto">
+          <div class="relative w-44 sm:w-56">
+            <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-slate-400 text-xs"></i>
+            <input type="text" id="filterSearch" placeholder="Search rows..." class="w-full pl-7 pr-2.5 py-1 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 bg-slate-50">
+          </div>
+          <button id="btnExpandAll" title="Expand All Groups" class="px-2 py-1 text-[11px] font-medium border border-slate-200 rounded bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors">
+            <i class="fa-solid fa-plus text-[9px] mr-1"></i>Expand
+          </button>
+          <button id="btnCollapseAll" title="Collapse All Groups" class="px-2 py-1 text-[11px] font-medium border border-slate-200 rounded bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors">
+            <i class="fa-solid fa-minus text-[9px] mr-1"></i>Collapse
+          </button>
+          <button id="btnResetData" title="Upload New File" class="px-2.5 py-1 text-[11px] font-semibold border border-rose-200 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 transition-colors">
+            <i class="fa-solid fa-rotate-left text-[9px] mr-1"></i>New File
+          </button>
+        </div>
+      </div>
+
+      <!-- Ultra-Compact Filters & Pivot Control Panel -->
+      <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-2.5 space-y-2">
+        <!-- Top Inline Filters -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Dealer Filter</label>
+            <select id="filterDealer" class="w-full text-xs py-1 px-2 border border-slate-200 rounded bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium">
+              <option value="ALL">ALL COMBINED</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Model Filter</label>
+            <select id="filterModel" class="w-full text-xs py-1 px-2 border border-slate-200 rounded bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium">
+              <option value="ALL">All Models</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">View By Preset</label>
+            <select id="viewPresetSelect" class="w-full text-xs py-1 px-2 border border-blue-200 rounded bg-blue-50/50 text-blue-900 font-medium focus:outline-none focus:ring-1 focus:ring-blue-500">
+              <option value="date_only" selected>Day-by-Day (Date Only)</option>
+              <option value="dealer_summary">Dealer Summary</option>
+              <option value="dealer_short_summary">Dealer (Short Location) Summary</option>
+              <option value="dealer_model">Dealer &rarr; Model</option>
+              <option value="dealer_short_model">Dealer (Short Location) &rarr; Model</option>
+              <option value="dealer_model_variant">Dealer &rarr; Model &rarr; Variant</option>
+              <option value="custom">Custom Pivot...</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Bottom Dynamic Dimensions Row -->
+        <div class="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+          <div class="flex items-center space-x-1.5">
+            <span class="text-[11px] font-bold text-slate-600 uppercase">L1 (Top):</span>
+            <select id="pivotLevel1" class="text-xs py-0.5 px-2 border border-slate-200 rounded bg-white font-medium focus:ring-1 focus:ring-blue-500">
+              <option value="date" selected>Date</option>
+              <option value="dealerShort">Dealer (Short)</option>
+              <option value="dealer">Dealer (Full)</option>
+              <option value="model">Model Name</option>
+              <option value="variant">Model Variant</option>
+            </select>
+          </div>
+          <div class="flex items-center space-x-1.5">
+            <span class="text-[11px] font-bold text-slate-600 uppercase">L2:</span>
+            <select id="pivotLevel2" class="text-xs py-0.5 px-2 border border-slate-200 rounded bg-white font-medium focus:ring-1 focus:ring-blue-500">
+              <option value="none" selected>None</option>
+              <option value="date">Date</option>
+              <option value="dealerShort">Dealer (Short)</option>
+              <option value="dealer">Dealer (Full)</option>
+              <option value="model">Model Name</option>
+              <option value="variant">Model Variant</option>
+            </select>
+          </div>
+          <div class="flex items-center space-x-1.5">
+            <span class="text-[11px] font-bold text-slate-600 uppercase">L3 (Bottom):</span>
+            <select id="pivotLevel3" class="text-xs py-0.5 px-2 border border-slate-200 rounded bg-white font-medium focus:ring-1 focus:ring-blue-500">
+              <option value="none" selected>None</option>
+              <option value="date">Date</option>
+              <option value="dealerShort">Dealer (Short)</option>
+              <option value="dealer">Dealer (Full)</option>
+              <option value="model">Model Name</option>
+              <option value="variant">Model Variant</option>
+            </select>
+          </div>
+          <div class="flex items-center space-x-1.5 ml-auto">
+            <span class="text-[11px] font-bold text-blue-700 uppercase">Column (Across):</span>
+            <select id="pivotColField" class="text-xs py-0.5 px-2 border border-blue-200 rounded bg-blue-50/50 text-blue-900 font-semibold focus:ring-1 focus:ring-blue-500">
+              <option value="none" selected>Total Only</option>
+              <option value="model">Model Name</option>
+              <option value="variant">Model Variant</option>
+              <option value="dealerShort">Dealer (Short)</option>
+              <option value="dealer">Dealer (Full)</option>
+              <option value="date">Date</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reports Row: Natural content-fit side-by-side tables with smooth horizontal scroll -->
+      <div class="flex flex-row items-start gap-4 overflow-x-auto custom-scrollbar pb-3">
+
+        <!-- Card 1: Main Dynamic Pivot Table -->
+        <div id="pivotContainerCard" class="w-fit min-w-[320px] max-w-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col flex-shrink-0">
+          <div class="px-3.5 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
+            <div class="flex items-center space-x-2">
+              <span class="inline-block w-2 h-2 rounded-full bg-blue-600"></span>
+              <span id="matrixTitleDisplay" class="text-xs sm:text-sm font-bold text-slate-900">Day-by-Day (Date Only)</span>
+            </div>
+            <span id="matrixColTypeDisplay" class="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+              Total Only
+            </span>
+          </div>
+
+          <div class="overflow-x-auto custom-scrollbar max-h-[calc(100vh-270px)] min-h-[340px] relative">
+            <table id="pivotTable" class="text-left text-xs border-collapse">
+              <thead id="pivotThead" class="sticky top-0 bg-slate-100 z-10 shadow-sm border-b border-slate-300"></thead>
+              <tbody id="pivotTbody" class="divide-y divide-slate-200 bg-white"></tbody>
+              <tfoot id="pivotTfoot" class="sticky bottom-0 bg-slate-100 border-t-2 border-slate-300 font-bold text-slate-900"></tfoot>
+            </table>
+          </div>
+        </div>
+
+        <!-- Card 2: Model-wise Total Summary -->
+        <div id="sideModelSummaryCard" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col flex-shrink-0 min-w-[280px] max-w-xs">
+          <div class="px-3.5 py-2 bg-indigo-50/70 border-b border-indigo-100 flex items-center justify-between gap-3">
+            <div class="flex items-center space-x-2">
+              <span class="inline-block w-2 h-2 rounded-full bg-indigo-600"></span>
+              <span class="text-xs sm:text-sm font-bold text-indigo-950">Model-wise Total</span>
+            </div>
+            <span id="sideModelCountBadge" class="text-[10px] font-semibold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full border border-indigo-200">
+              0 Models
+            </span>
+          </div>
+
+          <div class="overflow-x-auto custom-scrollbar max-h-[calc(100vh-270px)] min-h-[340px] relative">
+            <table class="text-left text-xs border-collapse w-full">
+              <thead class="sticky top-0 bg-slate-100 z-10 shadow-sm border-b border-slate-300 text-slate-700">
+                <tr>
+                  <th class="px-3 py-2.5 font-bold border-r border-slate-200">Model Name</th>
+                  <th class="px-3 py-2.5 text-right font-bold w-16">Total</th>
+                </tr>
+              </thead>
+              <tbody id="sideModelTbody" class="divide-y divide-slate-200 bg-white"></tbody>
+              <tfoot id="sideModelTfoot" class="sticky bottom-0 bg-slate-100 border-t-2 border-slate-300 font-bold text-slate-900"></tfoot>
+            </table>
+          </div>
+        </div>
+
+        <!-- Card 3: Variant-wise Total Summary -->
+        <div id="sideVariantSummaryCard" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col flex-shrink-0 min-w-[300px] max-w-sm">
+          <div class="px-3.5 py-2 bg-purple-50/70 border-b border-purple-100 flex items-center justify-between gap-3">
+            <div class="flex items-center space-x-2">
+              <span class="inline-block w-2 h-2 rounded-full bg-purple-600"></span>
+              <span class="text-xs sm:text-sm font-bold text-purple-950">Variant-wise Total</span>
+            </div>
+            <span id="sideVariantCountBadge" class="text-[10px] font-semibold bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full border border-purple-200">
+              0 Variants
+            </span>
+          </div>
+
+          <div class="overflow-x-auto custom-scrollbar max-h-[calc(100vh-270px)] min-h-[340px] relative">
+            <table class="text-left text-xs border-collapse w-full">
+              <thead class="sticky top-0 bg-slate-100 z-10 shadow-sm border-b border-slate-300 text-slate-700">
+                <tr>
+                  <th class="px-3 py-2.5 font-bold border-r border-slate-200">Model Variant</th>
+                  <th class="px-3 py-2.5 text-right font-bold w-16">Total</th>
+                </tr>
+              </thead>
+              <tbody id="sideVariantTbody" class="divide-y divide-slate-200 bg-white"></tbody>
+              <tfoot id="sideVariantTfoot" class="sticky bottom-0 bg-slate-100 border-t-2 border-slate-300 font-bold text-slate-900"></tfoot>
+            </table>
+          </div>
+        </div>
+
+        <!-- Card 4: Location-wise (Dealer Short) Total Summary -->
+        <div id="sideLocationSummaryCard" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col flex-shrink-0 min-w-[280px] max-w-xs">
+          <div class="px-3.5 py-2 bg-emerald-50/70 border-b border-emerald-100 flex items-center justify-between gap-3">
+            <div class="flex items-center space-x-2">
+              <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span class="text-xs sm:text-sm font-bold text-emerald-950">Location-wise Total</span>
+            </div>
+            <span id="sideLocationCountBadge" class="text-[10px] font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200">
+              0 Locations
+            </span>
+          </div>
+
+          <div class="overflow-x-auto custom-scrollbar max-h-[calc(100vh-270px)] min-h-[340px] relative">
+            <table class="text-left text-xs border-collapse w-full">
+              <thead class="sticky top-0 bg-slate-100 z-10 shadow-sm border-b border-slate-300 text-slate-700">
+                <tr>
+                  <th class="px-3 py-2.5 font-bold border-r border-slate-200">Location (Dealer)</th>
+                  <th class="px-3 py-2.5 text-right font-bold w-16">Total</th>
+                </tr>
+              </thead>
+              <tbody id="sideLocationTbody" class="divide-y divide-slate-200 bg-white"></tbody>
+              <tfoot id="sideLocationTfoot" class="sticky bottom-0 bg-slate-100 border-t-2 border-slate-300 font-bold text-slate-900"></tfoot>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div><!-- End of dashboardContainer -->
+  </main>
+
+  <!-- MODAL: Import / Paste Data (Accessible from header) -->
+  <div id="dataModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+        <h3 class="text-base font-bold text-slate-800 flex items-center space-x-2">
+          <i class="fa-solid fa-file-import text-blue-600"></i>
+          <span>Import CSV or Paste Raw Data</span>
+        </h3>
+        <button id="btnCloseModal" class="text-slate-400 hover:text-slate-600 p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Drag & Drop inside Modal -->
+      <div id="dropArea" class="border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50 hover:bg-blue-50/50 rounded-xl p-5 text-center cursor-pointer transition-all">
+        <input type="file" id="fileInput" accept=".csv,.txt,.tsv" class="hidden">
+        <i class="fa-solid fa-cloud-arrow-up text-3xl text-blue-500 mb-2"></i>
+        <p class="text-xs font-semibold text-slate-700">Click to Browse or Drag & Drop File</p>
+        <p class="text-[11px] text-slate-400">Supports CSV, TSV, UTF-8 & UTF-16</p>
+        <div id="fileNameDisplay" class="text-xs text-blue-600 font-semibold mt-2 hidden"></div>
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <label class="text-xs font-semibold text-slate-600 uppercase">Or Paste Sales Text Below</label>
+          <button id="btnClearPaste" class="text-xs text-rose-500 hover:underline">Clear</button>
+        </div>
+        <textarea id="rawPasteArea" rows="7" class="w-full text-xs font-mono p-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 custom-scrollbar" placeholder="Paste data here..."></textarea>
+      </div>
+
+      <div class="flex justify-end space-x-2 pt-2 border-t border-slate-200">
+        <button id="btnCancelModal" class="px-4 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:bg-slate-100">Cancel</button>
+        <button id="btnProcessInputData" class="px-5 py-2 text-xs font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 shadow-md">Process Data</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-xs flex items-center space-x-2.5 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none z-50">
+    <i class="fa-solid fa-circle-check text-emerald-400"></i>
+    <span id="toastMsg">Operation successful!</span>
+  </div>
+
+  <script>
+    // Dealer to Short Location Mapping
+    const DEALER_MAPPING = {
+      'AGARWAL MOTORS.': 'Debai',
+      'AL UZAIR AUTOMOBILES': 'Gulaothi',
+      'SHREE BHAGIRATHI MOTORS': 'Jahangirabad',
+      'SHRI GANGA MOTORS.': 'Anupshahr',
+      'SHRI MASHA AUTOS PVT. LTD.': 'Masha + EC',
+      'VEER MOTORS.': 'Shikarpur'
+    };
+
+    function getDealerShortName(fullDealerName) {
+      if (!fullDealerName) return 'Unknown';
+      const clean = fullDealerName.trim();
+      return DEALER_MAPPING[clean] || clean;
+    }
+
+    function cleanDateString(dateVal) {
+      if (!dateVal) return 'Unknown Date';
+      const str = String(dateVal).trim();
+      return str.split(' ')[0]; // removes time part like 10:46:07 AM
+    }
+
+    // Application state
+    const AppState = {
+      rawRows: [],
+      filteredRows: [],
+      pivotResult: {
+        colHeaders: [],
+        tree: {},
+        colTotals: {},
+        grandTotal: 0,
+        levels: ['date', 'none', 'none'],
+        colField: 'none'
+      },
+      collapsedGroups: new Set()
+    };
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toastMsg');
+      if (!toast || !toastMsg) return;
+      toastMsg.innerText = message;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3200);
+    }
+
+    function parseAndLoadData(rawDataArrayOrString, isCsvString = false) {
+      let rawList = [];
+
+      if (isCsvString) {
+        const parseResult = Papa.parse(rawDataArrayOrString, {
+          header: true,
+          skipEmptyLines: true,
+          dynamicTyping: false
+        });
+        rawList = parseResult.data;
+      } else {
+        rawList = rawDataArrayOrString;
+      }
+
+      // Filter: ONLY rows where Status is "New"
+      const validRows = [];
+      rawList.forEach(row => {
+        const cleanRow = {};
+        Object.keys(row).forEach(k => {
+          cleanRow[k.trim()] = row[k] ? String(row[k]).trim() : '';
+        });
+
+        const status = cleanRow['Status'] || '';
+        if (status.toLowerCase() === 'new') {
+          validRows.push({
+            dealer: cleanRow['Requesting Dealer'] || 'Unknown Dealer',
+            dealerShort: getDealerShortName(cleanRow['Requesting Dealer']),
+            model: cleanRow['Model Name'] || 'Unknown Model',
+            variant: cleanRow['Model Variant'] || 'Unknown Variant',
+            date: cleanDateString(cleanRow['Invoice Date'] || cleanRow['Booking Date'] || 'No Date'),
+            color: cleanRow['Color'] || 'Standard',
+            status: 'New'
+          });
+        }
+      });
+
+      if (validRows.length === 0) {
+        showToast('Koi record nahi mila jisme Status = "New" ho!');
+        return;
+      }
+
+      AppState.rawRows = validRows;
+
+      // Switch views: Hide initial upload screen & show dashboard
+      document.getElementById('initialUploadContainer')?.classList.add('hidden');
+      document.getElementById('dashboardContainer')?.classList.remove('hidden');
+
+      // Enable Export Button
+      const btnExport = document.getElementById('btnExportExcel');
+      if (btnExport) {
+        btnExport.disabled = false;
+        btnExport.classList.remove('opacity-50', 'cursor-not-allowed');
+      }
+
+      updateFilterDropdowns();
+      applyFiltersAndBuildPivot();
+      showToast(`Success! Loaded ${validRows.length} valid 'New' records.`);
+    }
+
+    function resetToUploadScreen() {
+      AppState.rawRows = [];
+      AppState.filteredRows = [];
+      AppState.collapsedGroups.clear();
+
+      document.getElementById('dashboardContainer')?.classList.add('hidden');
+      document.getElementById('initialUploadContainer')?.classList.remove('hidden');
+
+      const btnExport = document.getElementById('btnExportExcel');
+      if (btnExport) {
+        btnExport.disabled = true;
+        btnExport.classList.add('opacity-50', 'cursor-not-allowed');
+      }
+
+      const mainPasteArea = document.getElementById('mainPasteArea');
+      if (mainPasteArea) mainPasteArea.value = '';
+      const mainFileDisplay = document.getElementById('mainFileNameDisplay');
+      if (mainFileDisplay) mainFileDisplay.classList.add('hidden');
+    }
+
+    function updateFilterDropdowns() {
+      const dealerSelect = document.getElementById('filterDealer');
+      const modelSelect = document.getElementById('filterModel');
+
+      const dealers = [...new Set(AppState.rawRows.map(r => r.dealerShort))].sort();
+      const models = [...new Set(AppState.rawRows.map(r => r.model))].sort();
+
+      const currentDealer = dealerSelect.value;
+      const currentModel = modelSelect.value;
+
+      dealerSelect.innerHTML = '<option value="ALL">ALL COMBINED</option>';
+      dealers.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d;
+        opt.textContent = d;
+        dealerSelect.appendChild(opt);
+      });
+
+      modelSelect.innerHTML = '<option value="ALL">All Models</option>';
+      models.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        modelSelect.appendChild(opt);
+      });
+
+      if (dealers.includes(currentDealer)) dealerSelect.value = currentDealer;
+      if (models.includes(currentModel)) modelSelect.value = currentModel;
+    }
+
+    function updateKPIs(rows) {
+      document.getElementById('kpiTotalInvoices').innerText = rows.length;
+      document.getElementById('kpiTotalDealers').innerText = new Set(rows.map(r => r.dealerShort)).size;
+      document.getElementById('kpiTotalModels').innerText = new Set(rows.map(r => r.model)).size;
+      document.getElementById('kpiTotalDates').innerText = new Set(rows.map(r => r.date)).size;
+    }
+
+    function buildPivotTree(rows, levels, colField) {
+      const activeLevels = levels.filter(lvl => lvl !== 'none');
+      const colHeadersSet = new Set();
+
+      if (colField !== 'none') {
+        rows.forEach(r => {
+          const cVal = r[colField] || 'N/A';
+          colHeadersSet.add(cVal);
+        });
+      }
+      const colHeaders = Array.from(colHeadersSet).sort();
+
+      const tree = {};
+      const colTotals = {};
+      colHeaders.forEach(c => colTotals[c] = 0);
+      let grandTotal = 0;
+
+      rows.forEach(r => {
+        grandTotal++;
+        const cVal = colField !== 'none' ? (r[colField] || 'N/A') : null;
+        if (cVal && colTotals[cVal] !== undefined) {
+          colTotals[cVal]++;
+        }
+
+        if (activeLevels.length === 0) return;
+
+        const val1 = r[activeLevels[0]] || 'Unknown';
+        if (!tree[val1]) {
+          tree[val1] = { count: 0, colCounts: {}, children: {} };
+          colHeaders.forEach(c => tree[val1].colCounts[c] = 0);
+        }
+        tree[val1].count++;
+        if (cVal) tree[val1].colCounts[cVal] = (tree[val1].colCounts[cVal] || 0) + 1;
+
+        if (activeLevels.length > 1) {
+          const val2 = r[activeLevels[1]] || 'Unknown';
+          if (!tree[val1].children[val2]) {
+            tree[val1].children[val2] = { count: 0, colCounts: {}, children: {} };
+            colHeaders.forEach(c => tree[val1].children[val2].colCounts[c] = 0);
+          }
+          tree[val1].children[val2].count++;
+          if (cVal) tree[val1].children[val2].colCounts[cVal] = (tree[val1].children[val2].colCounts[cVal] || 0) + 1;
+
+          if (activeLevels.length > 2) {
+            const val3 = r[activeLevels[2]] || 'Unknown';
+            if (!tree[val1].children[val2].children[val3]) {
+              tree[val1].children[val2].children[val3] = { count: 0, colCounts: {} };
+              colHeaders.forEach(c => tree[val1].children[val2].children[val3].colCounts[c] = 0);
+            }
+            tree[val1].children[val2].children[val3].count++;
+            if (cVal) tree[val1].children[val2].children[val3].colCounts[cVal] = (tree[val1].children[val2].children[val3].colCounts[cVal] || 0) + 1;
+          }
+        }
+      });
+
+      return { colHeaders, tree, colTotals, grandTotal, levels: activeLevels, colField };
+    }
+
+    function applyFiltersAndBuildPivot() {
+      const selectedDealer = document.getElementById('filterDealer').value;
+      const selectedModel = document.getElementById('filterModel').value;
+      const searchTerm = document.getElementById('filterSearch').value.toLowerCase().trim();
+
+      const filtered = AppState.rawRows.filter(r => {
+        if (selectedDealer !== 'ALL' && r.dealerShort !== selectedDealer) return false;
+        if (selectedModel !== 'ALL' && r.model !== selectedModel) return false;
+        if (searchTerm) {
+          const match = r.dealer.toLowerCase().includes(searchTerm) ||
+                        r.dealerShort.toLowerCase().includes(searchTerm) ||
+                        r.model.toLowerCase().includes(searchTerm) ||
+                        r.variant.toLowerCase().includes(searchTerm) ||
+                        r.date.toLowerCase().includes(searchTerm);
+          if (!match) return false;
+        }
+        return true;
+      });
+
+      AppState.filteredRows = filtered;
+      updateKPIs(filtered);
+
+      const lvl1 = document.getElementById('pivotLevel1').value;
+      const lvl2 = document.getElementById('pivotLevel2').value;
+      const lvl3 = document.getElementById('pivotLevel3').value;
+      const colField = document.getElementById('pivotColField').value;
+
+      AppState.pivotResult = buildPivotTree(filtered, [lvl1, lvl2, lvl3], colField);
+      renderPivotTable();
+      renderSideModelSummary(filtered, colField, lvl1);
+      renderSideVariantSummary(filtered, colField, lvl1);
+      renderSideLocationSummary(filtered, colField, lvl1);
+    }
+
+    function renderPivotTable() {
+      const thead = document.getElementById('pivotThead');
+      const tbody = document.getElementById('pivotTbody');
+      const tfoot = document.getElementById('pivotTfoot');
+
+      thead.innerHTML = '';
+      tbody.innerHTML = '';
+      tfoot.innerHTML = '';
+
+      const { colHeaders, tree, colTotals, grandTotal, levels, colField } = AppState.pivotResult;
+
+      const titleEl = document.getElementById('matrixTitleDisplay');
+      const presetVal = document.getElementById('viewPresetSelect').value;
+      if (presetVal === 'date_only') {
+        titleEl.innerText = 'Day-by-Day (Date Only)';
+      } else {
+        const labels = levels.map(l => {
+          if (l === 'date') return 'Date';
+          if (l === 'dealerShort') return 'Dealer (Short)';
+          if (l === 'dealer') return 'Dealer (Full)';
+          if (l === 'model') return 'Model';
+          if (l === 'variant') return 'Variant';
+          return l;
+        });
+        titleEl.innerText = labels.join(' \u2192 ') || 'Grand Summary';
+      }
+
+      const colDisplay = document.getElementById('matrixColTypeDisplay');
+      colDisplay.innerText = colField !== 'none' ? `Cols: ${colField}` : 'Total Only';
+
+      // Header row
+      const trHead = document.createElement('tr');
+      const thLabel = document.createElement('th');
+      thLabel.className = 'px-3.5 py-2.5 text-left font-bold text-slate-800 border-r border-slate-300 min-w-[200px] whitespace-nowrap';
+      thLabel.innerText = 'Row Labels';
+      trHead.appendChild(thLabel);
+
+      colHeaders.forEach(col => {
+        const th = document.createElement('th');
+        th.className = 'px-3 py-2.5 text-right font-bold text-slate-700 border-r border-slate-200 min-w-[90px] whitespace-nowrap';
+        th.innerText = col;
+        trHead.appendChild(th);
+      });
+
+      const thTot = document.createElement('th');
+      thTot.className = 'px-3.5 py-2.5 text-right font-bold text-blue-900 bg-blue-50/70 min-w-[80px] whitespace-nowrap';
+      thTot.innerText = 'Total';
+      trHead.appendChild(thTot);
+      thead.appendChild(trHead);
+
+      // Body rows
+      const topKeys = Object.keys(tree).sort();
+      if (topKeys.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="${colHeaders.length + 2}" class="px-6 py-8 text-center text-slate-400 italic">No matching records found.</td></tr>`;
+      } else {
+        topKeys.forEach(k1 => {
+          renderTreeBranch(tbody, k1, tree[k1], 0, [k1], colHeaders);
+        });
+      }
+
+      // Foot row
+      const trFoot = document.createElement('tr');
+      const tdFootLabel = document.createElement('td');
+      tdFootLabel.className = 'px-3.5 py-2.5 font-bold uppercase tracking-wider text-slate-900 border-r border-slate-300';
+      tdFootLabel.innerText = 'GRAND TOTAL';
+      trFoot.appendChild(tdFootLabel);
+
+      colHeaders.forEach(col => {
+        const td = document.createElement('td');
+        td.className = 'px-3 py-2.5 text-right font-bold text-slate-800 border-r border-slate-200';
+        td.innerText = colTotals[col] || 0;
+        trFoot.appendChild(td);
+      });
+
+      const tdFootTotal = document.createElement('td');
+      tdFootTotal.className = 'px-3.5 py-2.5 text-right font-extrabold text-blue-800 bg-blue-100/60';
+      tdFootTotal.innerText = grandTotal;
+      trFoot.appendChild(tdFootTotal);
+      tfoot.appendChild(trFoot);
+    }
+
+    function renderTreeBranch(tbody, key, node, depth, pathArray, colHeaders) {
+      const pathKey = pathArray.join(' > ');
+      const hasChildren = node.children && Object.keys(node.children).length > 0;
+      const isCollapsed = AppState.collapsedGroups.has(pathKey);
+
+      const tr = document.createElement('tr');
+      tr.className = `hover:bg-blue-50/40 transition-colors ${depth === 0 ? 'bg-slate-50/50 font-semibold text-slate-900' : depth === 1 ? 'text-slate-800 font-medium' : 'text-slate-700'}`;
+
+      const tdLabel = document.createElement('td');
+      tdLabel.className = 'px-3.5 py-2 border-r border-slate-200 whitespace-nowrap';
+
+      const flexContainer = document.createElement('div');
+      flexContainer.className = 'flex items-center';
+      flexContainer.style.paddingLeft = `${depth * 1.5}rem`;
+
+      if (hasChildren) {
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'w-4 h-4 mr-1.5 flex items-center justify-center text-slate-500 hover:text-slate-900 text-xs focus:outline-none';
+        toggleBtn.innerHTML = isCollapsed ? '<i class="fa-solid fa-square-plus"></i>' : '<i class="fa-solid fa-square-minus"></i>';
+        toggleBtn.onclick = (e) => {
+          e.stopPropagation();
+          if (AppState.collapsedGroups.has(pathKey)) {
+            AppState.collapsedGroups.delete(pathKey);
+          } else {
+            AppState.collapsedGroups.add(pathKey);
+          }
+          renderPivotTable();
+        };
+        flexContainer.appendChild(toggleBtn);
+      } else {
+        const spacer = document.createElement('span');
+        spacer.className = 'w-4 mr-1.5 inline-block';
+        flexContainer.appendChild(spacer);
+      }
+
+      const labelSpan = document.createElement('span');
+      labelSpan.textContent = key;
+      flexContainer.appendChild(labelSpan);
+
+      tdLabel.appendChild(flexContainer);
+      tr.appendChild(tdLabel);
+
+      colHeaders.forEach(col => {
+        const td = document.createElement('td');
+        td.className = 'px-3 py-2 text-right border-r border-slate-200 whitespace-nowrap';
+        const val = node.colCounts[col] || 0;
+        td.innerText = val > 0 ? val : '-';
+        if (val === 0) td.classList.add('text-slate-300');
+        tr.appendChild(td);
+      });
+
+      const tdTotal = document.createElement('td');
+      tdTotal.className = 'px-3.5 py-2 text-right font-bold text-slate-900 bg-slate-50/60 whitespace-nowrap';
+      tdTotal.innerText = node.count;
+      tr.appendChild(tdTotal);
+
+      tbody.appendChild(tr);
+
+      if (hasChildren && !isCollapsed) {
+        const childKeys = Object.keys(node.children).sort();
+        childKeys.forEach(ck => {
+          renderTreeBranch(tbody, ck, node.children[ck], depth + 1, [...pathArray, ck], colHeaders);
+        });
+      }
+    }
+
+    function renderSideModelSummary(rows, colField, lvl1) {
+      const card = document.getElementById('sideModelSummaryCard');
+      if (!card) return;
+
+      if (colField !== 'none' || lvl1 === 'model') {
+        card.classList.add('hidden');
+        return;
+      }
+      card.classList.remove('hidden');
+
+      const tbody = document.getElementById('sideModelTbody');
+      const tfoot = document.getElementById('sideModelTfoot');
+      const badge = document.getElementById('sideModelCountBadge');
+      if (!tbody || !tfoot) return;
+
+      tbody.innerHTML = '';
+      tfoot.innerHTML = '';
+
+      const modelCounts = {};
+      let totalUnits = 0;
+      rows.forEach(r => {
+        const m = r.model || 'Unknown';
+        modelCounts[m] = (modelCounts[m] || 0) + 1;
+        totalUnits++;
+      });
+
+      const sortedModels = Object.keys(modelCounts).sort((a, b) => modelCounts[b] - modelCounts[a]);
+      if (badge) badge.innerText = `${sortedModels.length} Models`;
+
+      if (sortedModels.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="2" class="px-3 py-6 text-center text-slate-400 italic">No models found</td></tr>`;
+      } else {
+        sortedModels.forEach(m => {
+          const cnt = modelCounts[m];
+          const pct = totalUnits > 0 ? ((cnt / totalUnits) * 100).toFixed(1) : 0;
+          const tr = document.createElement('tr');
+          tr.className = 'hover:bg-indigo-50/40 transition-colors';
+          tr.innerHTML = `
+            <td class="px-3 py-2 border-r border-slate-200 whitespace-nowrap font-medium text-slate-800">
+              ${m}
+              <span class="text-[10px] text-slate-400 ml-1.5 font-normal">(${pct}%)</span>
+            </td>
+            <td class="px-3 py-2 text-right font-bold text-indigo-950">${cnt}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      tfoot.innerHTML = `
+        <tr>
+          <td class="px-3 py-2 text-left uppercase tracking-wider text-slate-900 border-r border-slate-300">Grand Total</td>
+          <td class="px-3 py-2 text-right font-extrabold text-indigo-950 bg-indigo-50/80">${totalUnits}</td>
+        </tr>
+      `;
+    }
+
+    function renderSideVariantSummary(rows, colField, lvl1) {
+      const card = document.getElementById('sideVariantSummaryCard');
+      if (!card) return;
+
+      if (colField !== 'none' || lvl1 === 'variant') {
+        card.classList.add('hidden');
+        return;
+      }
+      card.classList.remove('hidden');
+
+      const tbody = document.getElementById('sideVariantTbody');
+      const tfoot = document.getElementById('sideVariantTfoot');
+      const badge = document.getElementById('sideVariantCountBadge');
+      if (!tbody || !tfoot) return;
+
+      tbody.innerHTML = '';
+      tfoot.innerHTML = '';
+
+      const variantCounts = {};
+      let totalUnits = 0;
+      rows.forEach(r => {
+        const v = r.variant || 'Unknown';
+        variantCounts[v] = (variantCounts[v] || 0) + 1;
+        totalUnits++;
+      });
+
+      const sortedVariants = Object.keys(variantCounts).sort((a, b) => variantCounts[b] - variantCounts[a]);
+      if (badge) badge.innerText = `${sortedVariants.length} Variants`;
+
+      if (sortedVariants.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="2" class="px-3 py-6 text-center text-slate-400 italic">No variants found</td></tr>`;
+      } else {
+        sortedVariants.forEach(v => {
+          const cnt = variantCounts[v];
+          const pct = totalUnits > 0 ? ((cnt / totalUnits) * 100).toFixed(1) : 0;
+          const tr = document.createElement('tr');
+          tr.className = 'hover:bg-purple-50/40 transition-colors';
+          tr.innerHTML = `
+            <td class="px-3 py-2 border-r border-slate-200 whitespace-nowrap font-medium text-slate-800">
+              ${v}
+              <span class="text-[10px] text-slate-400 ml-1.5 font-normal">(${pct}%)</span>
+            </td>
+            <td class="px-3 py-2 text-right font-bold text-purple-950">${cnt}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      tfoot.innerHTML = `
+        <tr>
+          <td class="px-3 py-2 text-left uppercase tracking-wider text-slate-900 border-r border-slate-300">Grand Total</td>
+          <td class="px-3 py-2 text-right font-extrabold text-purple-950 bg-purple-50/80">${totalUnits}</td>
+        </tr>
+      `;
+    }
+
+    function renderSideLocationSummary(rows, colField, lvl1) {
+      const card = document.getElementById('sideLocationSummaryCard');
+      if (!card) return;
+
+      if (colField !== 'none' || lvl1 === 'dealerShort' || lvl1 === 'dealer') {
+        card.classList.add('hidden');
+        return;
+      }
+      card.classList.remove('hidden');
+
+      const tbody = document.getElementById('sideLocationTbody');
+      const tfoot = document.getElementById('sideLocationTfoot');
+      const badge = document.getElementById('sideLocationCountBadge');
+      if (!tbody || !tfoot) return;
+
+      tbody.innerHTML = '';
+      tfoot.innerHTML = '';
+
+      const locCounts = {};
+      let totalUnits = 0;
+      rows.forEach(r => {
+        const loc = r.dealerShort || 'Unknown';
+        locCounts[loc] = (locCounts[loc] || 0) + 1;
+        totalUnits++;
+      });
+
+      const sortedLocs = Object.keys(locCounts).sort((a, b) => locCounts[b] - locCounts[a]);
+      if (badge) badge.innerText = `${sortedLocs.length} Locations`;
+
+      if (sortedLocs.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="2" class="px-3 py-6 text-center text-slate-400 italic">No locations found</td></tr>`;
+      } else {
+        sortedLocs.forEach(loc => {
+          const cnt = locCounts[loc];
+          const pct = totalUnits > 0 ? ((cnt / totalUnits) * 100).toFixed(1) : 0;
+          const tr = document.createElement('tr');
+          tr.className = 'hover:bg-emerald-50/40 transition-colors';
+          tr.innerHTML = `
+            <td class="px-3 py-2 border-r border-slate-200 whitespace-nowrap font-medium text-slate-800">
+              ${loc}
+              <span class="text-[10px] text-slate-400 ml-1.5 font-normal">(${pct}%)</span>
+            </td>
+            <td class="px-3 py-2 text-right font-bold text-emerald-950">${cnt}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      tfoot.innerHTML = `
+        <tr>
+          <td class="px-3 py-2 text-left uppercase tracking-wider text-slate-900 border-r border-slate-300">Grand Total</td>
+          <td class="px-3 py-2 text-right font-extrabold text-emerald-950 bg-emerald-50/80">${totalUnits}</td>
+        </tr>
+      `;
+    }
+
+    // View Preset Change Handler
+    document.getElementById('viewPresetSelect')?.addEventListener('change', (e) => {
+      const val = e.target.value;
+      const l1 = document.getElementById('pivotLevel1');
+      const l2 = document.getElementById('pivotLevel2');
+      const l3 = document.getElementById('pivotLevel3');
+      const col = document.getElementById('pivotColField');
+
+      if (val === 'date_only') {
+        l1.value = 'date';
+        l2.value = 'none';
+        l3.value = 'none';
+        col.value = 'none';
+      } else if (val === 'dealer_summary') {
+        l1.value = 'dealer';
+        l2.value = 'none';
+        l3.value = 'none';
+      } else if (val === 'dealer_short_summary') {
+        l1.value = 'dealerShort';
+        l2.value = 'none';
+        l3.value = 'none';
+      } else if (val === 'dealer_model') {
+        l1.value = 'dealer';
+        l2.value = 'model';
+        l3.value = 'none';
+      } else if (val === 'dealer_short_model') {
+        l1.value = 'dealerShort';
+        l2.value = 'model';
+        l3.value = 'none';
+      } else if (val === 'dealer_model_variant') {
+        l1.value = 'dealer';
+        l2.value = 'model';
+        l3.value = 'variant';
+      }
+      applyFiltersAndBuildPivot();
+    });
+
+    ['pivotLevel1', 'pivotLevel2', 'pivotLevel3', 'pivotColField'].forEach(id => {
+      document.getElementById(id)?.addEventListener('change', () => {
+        document.getElementById('viewPresetSelect').value = 'custom';
+        applyFiltersAndBuildPivot();
+      });
+    });
+
+    ['filterDealer', 'filterModel'].forEach(id => {
+      document.getElementById(id)?.addEventListener('change', applyFiltersAndBuildPivot);
+    });
+
+    document.getElementById('filterSearch')?.addEventListener('input', applyFiltersAndBuildPivot);
+
+    document.getElementById('btnExpandAll')?.addEventListener('click', () => {
+      AppState.collapsedGroups.clear();
+      renderPivotTable();
+    });
+
+    document.getElementById('btnCollapseAll')?.addEventListener('click', () => {
+      const { tree } = AppState.pivotResult;
+      Object.keys(tree).forEach(k => {
+        AppState.collapsedGroups.add(k);
+        if (tree[k].children) {
+          Object.keys(tree[k].children).forEach(k2 => {
+            AppState.collapsedGroups.add(`${k} > ${k2}`);
+          });
+        }
+      });
+      renderPivotTable();
+    });
+
+    // Modal Events
+    const modal = document.getElementById('dataModal');
+    const dropArea = document.getElementById('dropArea');
+    const fileInput = document.getElementById('fileInput');
+
+    document.getElementById('btnToggleDataModal')?.addEventListener('click', () => modal?.classList.remove('hidden'));
+    document.getElementById('btnCloseModal')?.addEventListener('click', () => modal?.classList.add('hidden'));
+    document.getElementById('btnCancelModal')?.addEventListener('click', () => modal?.classList.add('hidden'));
+
+    // Landing Screen Direct Upload & Drag/Drop
+    const mainDropZone = document.getElementById('mainDropZone');
+    const mainFileInput = document.getElementById('mainFileInput');
+
+    mainDropZone?.addEventListener('click', () => mainFileInput?.click());
+    mainDropZone?.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      mainDropZone.classList.add('border-blue-500', 'bg-blue-100/50');
+    });
+    mainDropZone?.addEventListener('dragleave', () => {
+      mainDropZone.classList.remove('border-blue-500', 'bg-blue-100/50');
+    });
+    mainDropZone?.addEventListener('drop', (e) => {
+      e.preventDefault();
+      mainDropZone.classList.remove('border-blue-500', 'bg-blue-100/50');
+      if (e.dataTransfer.files.length) {
+        handleMainUploadedFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    mainFileInput?.addEventListener('change', (e) => {
+      if (e.target.files.length) {
+        handleMainUploadedFile(e.target.files[0]);
+      }
+    });
+
+    function handleMainUploadedFile(file) {
+      const display = document.getElementById('mainFileNameDisplay');
+      if (display) {
+        display.innerText = `File Selected: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+        display.classList.remove('hidden');
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const buffer = evt.target.result;
+        const bytes = new Uint8Array(buffer);
+        let decodedText = '';
+        if (bytes[0] === 0xFF && bytes[1] === 0xFE) {
+          const decoder = new TextDecoder('utf-16le');
+          decodedText = decoder.decode(buffer);
+        } else {
+          const decoder = new TextDecoder('utf-8');
+          decodedText = decoder.decode(buffer);
+        }
+        const pasteArea = document.getElementById('mainPasteArea');
+        if (pasteArea) pasteArea.value = decodedText;
+        parseAndLoadData(decodedText, true);
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    document.getElementById('btnGenerateFromLanding')?.addEventListener('click', () => {
+      const text = document.getElementById('mainPasteArea')?.value.trim();
+      if (!text) {
+        showToast('Kripya pehle CSV file upload karein ya data paste karein.');
+        return;
+      }
+      parseAndLoadData(text, true);
+    });
+
+    document.getElementById('btnClearMainPaste')?.addEventListener('click', () => {
+      const pasteArea = document.getElementById('mainPasteArea');
+      if (pasteArea) pasteArea.value = '';
+      const display = document.getElementById('mainFileNameDisplay');
+      if (display) display.classList.add('hidden');
+    });
+
+    document.getElementById('btnResetData')?.addEventListener('click', resetToUploadScreen);
+
+    // Modal file upload handling
+    dropArea?.addEventListener('click', () => fileInput?.click());
+    dropArea?.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropArea.classList.add('border-blue-500', 'bg-blue-50/50');
+    });
+    dropArea?.addEventListener('dragleave', () => {
+      dropArea.classList.remove('border-blue-500', 'bg-blue-50/50');
+    });
+    dropArea?.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropArea.classList.remove('border-blue-500', 'bg-blue-50/50');
+      if (e.dataTransfer.files.length) {
+        handleUploadedFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput?.addEventListener('change', (e) => {
+      if (e.target.files.length) {
+        handleUploadedFile(e.target.files[0]);
+      }
+    });
+
+    function handleUploadedFile(file) {
+      const display = document.getElementById('fileNameDisplay');
+      if (display) {
+        display.innerText = `Selected file: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+        display.classList.remove('hidden');
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const buffer = evt.target.result;
+        const bytes = new Uint8Array(buffer);
+        let decodedText = '';
+        if (bytes[0] === 0xFF && bytes[1] === 0xFE) {
+          const decoder = new TextDecoder('utf-16le');
+          decodedText = decoder.decode(buffer);
+        } else {
+          const decoder = new TextDecoder('utf-8');
+          decodedText = decoder.decode(buffer);
+        }
+        const pasteArea = document.getElementById('rawPasteArea');
+        if (pasteArea) pasteArea.value = decodedText;
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    document.getElementById('btnClearPaste')?.addEventListener('click', () => {
+      const pasteArea = document.getElementById('rawPasteArea');
+      if (pasteArea) pasteArea.value = '';
+      const display = document.getElementById('fileNameDisplay');
+      if (display) display.classList.add('hidden');
+    });
+
+    document.getElementById('btnProcessInputData')?.addEventListener('click', () => {
+      const text = document.getElementById('rawPasteArea')?.value.trim();
+      if (!text) {
+        showToast('Please provide text or upload a CSV file.');
+        return;
+      }
+      parseAndLoadData(text, true);
+      modal?.classList.add('hidden');
+    });
+
+    document.getElementById('btnExportExcel')?.addEventListener('click', () => {
+      const { colHeaders, tree, colTotals, grandTotal } = AppState.pivotResult;
+      if (!colHeaders.length && Object.keys(tree).length === 0) {
+        showToast('No data available to export.');
+        return;
+      }
+
+      const rows = [];
+      const headers = ['Hierarchy / Row Labels', ...colHeaders, 'Total'];
+      rows.push(headers);
+
+      const topKeys = Object.keys(tree).sort();
+      topKeys.forEach(k1 => {
+        const node1 = tree[k1];
+        const r1 = [k1];
+        colHeaders.forEach(c => r1.push(node1.colCounts[c] || 0));
+        r1.push(node1.count);
+        rows.push(r1);
+
+        const child2 = Object.keys(node1.children || {}).sort();
+        child2.forEach(k2 => {
+          const node2 = node1.children[k2];
+          const r2 = [`  -- ${k2}`];
+          colHeaders.forEach(c => r2.push(node2.colCounts[c] || 0));
+          r2.push(node2.count);
+          rows.push(r2);
+
+          const child3 = Object.keys(node2.children || {}).sort();
+          child3.forEach(k3 => {
+            const node3 = node2.children[k3];
+            const r3 = [`      ... ${k3}`];
+            colHeaders.forEach(c => r3.push(node3.colCounts[c] || 0));
+            r3.push(node3.count);
+            rows.push(r3);
+          });
+        });
+      });
+
+      const totalRow = ['Grand Total'];
+      colHeaders.forEach(c => totalRow.push(colTotals[c] || 0));
+      totalRow.push(grandTotal);
+      rows.push(totalRow);
+
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Sales Pivot");
+      XLSX.writeFile(wb, `Sales_Pivot_Report_${new Date().toISOString().slice(0,10)}.xlsx`);
+      showToast('Excel report downloaded successfully!');
+    });
+
+    // App Initialization: Starts clean with no hardcoded data
+    window.addEventListener('DOMContentLoaded', () => {
+      const presetEl = document.getElementById('viewPresetSelect');
+      if (presetEl) presetEl.value = 'date_only';
+      const l1 = document.getElementById('pivotLevel1');
+      if (l1) l1.value = 'date';
+      const l2 = document.getElementById('pivotLevel2');
+      if (l2) l2.value = 'none';
+      const l3 = document.getElementById('pivotLevel3');
+      if (l3) l3.value = 'none';
+      const col = document.getElementById('pivotColField');
+      if (col) col.value = 'none';
+
+      resetToUploadScreen();
+    });
+  </script>
+</body>
+</html>
